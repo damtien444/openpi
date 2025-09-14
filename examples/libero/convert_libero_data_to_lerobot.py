@@ -20,23 +20,24 @@ Running this conversion script will take approximately 30 minutes.
 
 import shutil
 
-from lerobot.common.datasets.lerobot_dataset import HF_LEROBOT_HOME
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import HF_LEROBOT_HOME
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 import tensorflow_datasets as tfds
 import tyro
 
-REPO_NAME = "your_hf_username/libero"  # Name of the output dataset, also used for the Hugging Face Hub
+REPO_NAME = "your_hf_username/libero_spatial"  # Name of the output dataset, also used for the Hugging Face Hub
 RAW_DATASET_NAMES = [
-    "libero_10_no_noops",
-    "libero_goal_no_noops",
-    "libero_object_no_noops",
+    # "libero_10_no_noops",
+    # "libero_goal_no_noops",
+    # "libero_object_no_noops",
     "libero_spatial_no_noops",
 ]  # For simplicity we will combine multiple Libero datasets into one training dataset
 
 
-def main(data_dir: str, *, push_to_hub: bool = False):
+def main(data_dir: str='/media/tien/SSD-DATA/data/libero/', push_to_hub: bool = False, ):
     # Clean up any existing dataset in the output directory
-    output_path = HF_LEROBOT_HOME / REPO_NAME
+    output_path = HF_LEROBOT_HOME / REPO_NAME 
+    print(f"Saving dataset to {output_path}")
     if output_path.exists():
         shutil.rmtree(output_path)
 
@@ -85,8 +86,8 @@ def main(data_dir: str, *, push_to_hub: bool = False):
                         "wrist_image": step["observation"]["wrist_image"],
                         "state": step["observation"]["state"],
                         "actions": step["action"],
-                        "task": step["language_instruction"].decode(),
-                    }
+                    },
+                    task=step["language_instruction"].decode()
                 )
             dataset.save_episode()
 
@@ -102,3 +103,4 @@ def main(data_dir: str, *, push_to_hub: bool = False):
 
 if __name__ == "__main__":
     tyro.cli(main)
+    print("Done!")

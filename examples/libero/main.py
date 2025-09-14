@@ -46,6 +46,25 @@ class Args:
 
 
 def eval_libero(args: Args) -> None:
+    
+    def unchunk(action_chunk, action_plan, replan_steps):
+        lengths = [v.shape[0] for v in action_chunk.values()]
+        action_chunk['action.gripper'] = -2*action_chunk['action.gripper'] + 1
+        if len(set(lengths)) != 1:
+            raise ValueError(f"Inconsistent lengths: {lengths}")
+        assert (
+            lengths[0] >= replan_steps
+        ), f"We want to replan every {args.replan_steps} steps, but policy only predicts {len(action_chunk)} steps."
+        # T = lengths[0]
+        T = replan_steps
+
+        keys = list(action_chunk.keys())
+        for t in range(T):
+            # Take the scalar at index t from each array, and put it into an ndarray of (D,) on axis=0.
+            new_arr = np.stack([action_chunk[k][t] for k in keys], axis=0)
+            # new_arr[-1] = -new_arr[-1]
+            action_plan.append(new_arr)
+    
     # Set random seed
     np.random.seed(args.seed)
 
@@ -114,39 +133,43 @@ def eval_libero(args: Args) -> None:
                     # IMPORTANT: rotate 180 degrees to match train preprocessing
                     img = np.ascontiguousarray(obs["agentview_image"][::-1, ::-1])
                     wrist_img = np.ascontiguousarray(obs["robot0_eye_in_hand_image"][::-1, ::-1])
-                    img = image_tools.convert_to_uint8(
-                        image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
-                    )
-                    wrist_img = image_tools.convert_to_uint8(
-                        image_tools.resize_with_pad(wrist_img, args.resize_size, args.resize_size)
-                    )
+                    # img = image_tools.convert_to_uint8(
+                    #     image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
+                    # )
+                    # wrist_img = image_tools.convert_to_uint8(
+                    #     image_tools.resize_with_pad(wrist_img, args.resize_size, args.resize_size)
+                    # )
 
                     # Save preprocessed image for replay video
                     replay_images.append(img)
+                    
+                    print(f"Step {t}: action plan length = {len(action_plan)}")
 
                     if not action_plan:
                         # Finished executing previous action chunk -- compute new chunk
                         # Prepare observations dict
                         element = {
-                            "observation/image": img,
-                            "observation/wrist_image": wrist_img,
-                            "observation/state": np.concatenate(
-                                (
-                                    obs["robot0_eef_pos"],
-                                    _quat2axisangle(obs["robot0_eef_quat"]),
-                                    obs["robot0_gripper_qpos"],
-                                )
+                            "video.image": np.expand_dims(img, axis=0),
+                            "video.wrist_image": np.expand_dims(wrist_img, axis=0),
+                            "state": np.expand_dims(
+                                np.concatenate(
+                                    (
+                                        obs["robot0_eef_pos"],
+                                        _quat2axisangle(obs["robot0_eef_quat"]),
+                                        obs["robot0_gripper_qpos"],
+                                    )
+                                ),
+                                axis=0
                             ),
-                            "prompt": str(task_description),
+                            "annotation.human.action.task_description": [str(task_description)],
                         }
 
                         # Query model to get action
-                        action_chunk = client.infer(element)["actions"]
-                        assert (
-                            len(action_chunk) >= args.replan_steps
-                        ), f"We want to replan every {args.replan_steps} steps, but policy only predicts {len(action_chunk)} steps."
-                        action_plan.extend(action_chunk[: args.replan_steps])
-
+                        # action_chunk = client.get_action(element)["action.actions"]
+                        print("Querying model for new action chunk...")
+                        action_chunk = client.get_action(element)
+                        print(f"Received action chunk ")
+                        unchunk(action_chunk, action_plan, args.replan_steps)
                     action = action_plan.popleft()
 
                     # Execute action in environment

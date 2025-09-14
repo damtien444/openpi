@@ -8,6 +8,32 @@ import websockets.sync.client
 from openpi_client import base_policy as _base_policy
 from openpi_client import msgpack_numpy
 
+import json_numpy
+
+json_numpy.patch()
+import requests
+
+def _example_http_client_call(obs: dict, host: str, port: int, api_token: str):
+    """
+    Example HTTP client call to the server.
+    """
+
+
+    # Send request to HTTP server
+    print("Testing HTTP server...")
+    test = requests.get(f"http://{host}:{port}/health")
+    print(f"Health check response: {test.status_code} - {test.text}")
+
+    time_start = time.time()
+    response = requests.post(f"http://{host}:{port}/act", json={"observation": obs})
+    print(f"Total time taken to get action from HTTP server: {time.time() - time_start} seconds")
+
+    if response.status_code == 200:
+        action = response.json()
+        return action
+    else:
+        print(f"Error: {response.status_code} - {response.text}")
+        return {}
 
 class WebsocketClientPolicy(_base_policy.BasePolicy):
     """Implements the Policy interface by communicating with a server over websocket.
@@ -16,12 +42,15 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
     """
 
     def __init__(self, host: str = "0.0.0.0", port: Optional[int] = None, api_key: Optional[str] = None) -> None:
-        self._uri = f"ws://{host}"
-        if port is not None:
-            self._uri += f":{port}"
-        self._packer = msgpack_numpy.Packer()
-        self._api_key = api_key
-        self._ws, self._server_metadata = self._wait_for_server()
+        # self._uri = f"ws://{host}"
+        # if port is not None:
+        #     self._uri += f":{port}"
+        # self._packer = msgpack_numpy.Packer()
+        # self._api_key = api_key
+        # self._ws, self._server_metadata = self._wait_for_server()
+        self.host = host
+        self.port = port
+        self.api_key = api_key
 
     def get_server_metadata(self) -> Dict:
         return self._server_metadata
@@ -53,3 +82,8 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
     @override
     def reset(self) -> None:
         pass
+    
+    def get_action(self, obs: dict) -> dict:
+        if self.port is None:
+            raise ValueError("Port must be specified to use HTTP client call.")
+        return _example_http_client_call(obs, self.host, self.port, self.api_key)
